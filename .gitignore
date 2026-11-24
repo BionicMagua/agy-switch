@@ -1,0 +1,9 @@
+/src-tauri/target
+/src-tauri/gen
+.ref-repos/
+/src-tauri/target-dist
+/dist
+/docs/
+/RESEARCH.md
+/scripts/diagnose-start.ps1
+/scripts/fs-probe.rs

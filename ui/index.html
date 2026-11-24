@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<title>AGY Switch</title>
+<style>
+  /* 排版与配色照搬 magpie (MIT, github.com/yetone/magpie) internal/gui/assets/app.css 的 Windows 主窗口：
+     无系统标题栏，顶栏就是标题栏 = 品牌 + 居中分段导航 + 右侧图标 + 窗口按钮；
+     页面 = 说明行 + 一张大列表卡 + 底部档案行；提示 = 底部浮签。 */
+  :root {
+    --bg: #f4f4f6; --card: #ffffff; --card-2: #f9f9fb;
+    --pill: #f1f1f4; --pill-hover: #e9e9ee;
+    --seg-thumb: var(--card);
+    --seg-edge: 0 1px 2px rgba(0, 0, 0, .14), 0 0 0 .5px rgba(0, 0, 0, .08);
+    --ctl-fg: #63636b;
+    --line: #e3e3e8; --line-2: #ececf0;
+    --fg: #1c1c21; --fg-2: #4b4b53; --muted: #85858d; --faint: #b9b9c2;
+    --accent: #4f46e5; --accent-soft: #eeedfd; --accent-fg: #ffffff;
+    --mark: var(--fg);
+    --green: #189a58; --green-soft: #e4f6ec;
+    --red: #d64545; --red-soft: #fbe9e9;
+    --amber: #b45309; --amber-soft: #fbf0df;
+    --knob-on: var(--card);
+    --c1: #4f46e5; --c2: #0ea5e9; --c3: #10b981; --c4: #f59e0b; --c5: #ec4899; --c6: #8b5cf6; --c7: #64748b;
+    --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+    --code: "Cascadia Mono", Consolas, "Microsoft YaHei UI", "Microsoft YaHei", monospace;
+    --ease: cubic-bezier(.2, .8, .2, 1);
+    --ease-out: cubic-bezier(.23, 1, .32, 1);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1e; --card: #232327; --card-2: #1f1f23;
+      --pill: #2d2d33; --pill-hover: #36363d;
+      --seg-thumb: rgba(255, 255, 255, .15);
+      --seg-edge: inset 0 .5px 0 rgba(255, 255, 255, .08), 0 1px 2px rgba(0, 0, 0, .3);
+      --line: #333339; --line-2: #2c2c32;
+      --fg: #ededf1; --fg-2: #b9b9c1; --muted: #9c9ca6; --faint: #90909a; --ctl-fg: #a1a1aa;
+      --accent: #a5b4fc; --accent-soft: #2b2c47; --accent-fg: #14142a;
+      --green: #6fd99b; --green-soft: #1e3a2b;
+      --red: #f28b82; --red-soft: #45272a;
+      --amber: #f2b544; --amber-soft: #3f3220;
+      --knob-on: var(--bg);
+      --c1: #a5b4fc; --c2: #7dd3fc; --c3: #6ee7b7; --c4: #fcd34d; --c5: #f9a8d4; --c6: #c4b5fd; --c7: #94a3b8;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font: 400 13px/1.4 var(--font);
+    color: var(--fg); background: var(--bg);
+    display: flex; flex-direction: column; overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    user-select: none; cursor: default;
+  }
+  :where(p, dd, .sub, .lede) { user-select: text; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: default; appearance: none; text-align: center; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input { font: inherit; color: var(--fg); }
+  [hidden] { display: none !important; }
+
+  /* ---- 顶栏（即标题栏） ---- */
+  .top { display: flex; align-items: center; gap: 8px; padding: 0 146px 0 14px; height: 46px; flex: none; position: relative; }
+  .brand { display: flex; align-items: center; gap: 6px; font-weight: 600; letter-spacing: .01em; }
+  .logo { color: var(--fg); display: inline-flex; }
+  .seg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: inline-flex; padding: 2px; border-radius: 8px; }
+  .seg > .thumb { position: absolute; top: 2px; bottom: 2px; left: 0; width: 0; border-radius: 6px; background: var(--seg-thumb); box-shadow: var(--seg-edge); pointer-events: none; }
+  .seg button { position: relative; z-index: 1; white-space: nowrap; height: 24px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; color: var(--ctl-fg); transition: color .18s var(--ease), transform .14s var(--ease); }
+  .seg button.on { color: var(--mark); }
+  .seg button:hover:not(.on) { color: var(--fg-2); }
+  .seg button:active { transform: scale(.96); }
+  .actions { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+  .icon { width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); transition: background .12s, color .12s, transform .14s var(--ease); }
+  .icon:hover:not(:disabled), .icon.on { background: var(--pill); color: var(--fg); }
+  .icon:active:not(:disabled) { transform: scale(.9); }
+  .icon.spin svg > * { transform-box: view-box; transform-origin: 50% 50%; animation: spin .9s linear; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* Antigravity 进程状态：顶栏图标前的安静药丸（magpie 的 update 药丸位置） */
+  .app-state { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; margin-right: 6px; border-radius: 999px; background: var(--pill); color: var(--ctl-fg); font-size: 11.5px; white-space: nowrap; }
+  .app-state i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+  .app-state.on i { background: var(--green); }
+  /* Windows 窗口按钮，照 magpie 的 .wincap */
+  .wincap { display: flex; position: fixed; z-index: 40; top: 0; right: 0; height: 46px; }
+  .wincap button { width: 46px; height: 100%; display: grid; place-items: center; padding: 0; border-radius: 0; background: transparent; color: var(--fg); font: 10px "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif; transition: background-color .1s ease, color .1s ease; }
+  .wincap button:hover { background: color-mix(in srgb, var(--fg) 9%, transparent); }
+  .wincap button:active { background: color-mix(in srgb, var(--fg) 6%, transparent); color: color-mix(in srgb, var(--fg) 70%, transparent); }
+  .wincap button[data-cap="close"]:hover { background: #c42b1c; color: #fff; }
+  .wincap button[data-cap="close"]:active { background: color-mix(in srgb, #c42b1c 90%, transparent); color: rgba(255, 255, 255, .7); }
+  /* 窄窗口：状态药丸先只留圆点，再整个收起，让位给居中导航 */
+  @media (max-width: 700px) { .app-state { padding: 0 8px; } .app-state span { display: none; } }
+  @media (max-width: 620px) { .app-state { display: none; } }
+
+  /* ---- 页面 ---- */
+  .view { flex: 1; min-height: 0; overflow-y: scroll; padding: 2px 6px 8px 16px; display: flex; flex-direction: column; animation: view-in .24s var(--ease); }
+  .view > * { flex-shrink: 0; }
+  @keyframes view-in { from { opacity: 0; transform: translateY(5px); } }
+  .lede { margin: 0 2px 12px; font-size: 12.5px; color: var(--fg-2); }
+  .lede b { font-weight: 600; color: var(--fg); }
+  /* 页头：说明 + 右侧页面工具（magpie Providers 页的 .pv-head） */
+  .pv-head { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; flex: none; }
+  .pv-head .lede { flex: 1; min-width: 0; margin: 0 2px; }
+  /* 隐藏账号，照 magpie 的 .rt-mask / .acct-eye / .pii：邮箱与档案名换成同形字母并模糊，供截图分享 */
+  .rt-mask { display: inline-flex; align-items: center; gap: 5px; margin-top: -3px; }
+  .rt-mask svg { width: 13px; height: 13px; flex: none; }
+  .rt-mask[aria-pressed="true"] { color: var(--fg-2); }
+  .pii { filter: blur(2.2px); opacity: .5; user-select: none; }
+  body.masking .pii { animation: rtpii .35s ease-out backwards; }
+  @keyframes rtpii { from { filter: blur(0); opacity: 1; } }
+  .acct-eye { display: none; flex: none; align-self: center; padding: 2px; border-radius: 4px; color: var(--muted); line-height: 0; opacity: 0; }
+  body.masked .acct-eye { display: inline-flex; }
+  body.masked .row:hover .acct-eye, body.masked .acct-eye:focus-visible, .acct-eye[aria-pressed="true"] { opacity: 1; }
+  .acct-eye:hover { color: var(--fg); background: var(--pill-hover); }
+  .row .name-line { display: flex; align-items: center; gap: 4px; min-width: 0; }
+
+  .list { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; flex: none; }
+  .row { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 7px 12px 7px 14px; }
+  .row + .row { border-top: 1px solid var(--line-2); }
+  .row .ic { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11.5px; font-weight: 600; color: #fff; background: var(--av, var(--c7)); }
+  @media (prefers-color-scheme: dark) { .row .ic { color: #17171b; } }
+  .row .ic.none { background: var(--pill); color: var(--muted); }
+  .row .who { min-width: 0; flex: 1 1 auto; }
+  .row .name { font-weight: 500; letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .row .sub { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; min-width: 0; }
+  /* 账号行 = magpie 的 agent 行：56px 高，状态行 12px/18px 带圆点 */
+  .row.acct { min-height: 56px; }
+  .row.acct .who { min-height: 42px; display: grid; align-content: center; }
+  .st { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 18px; color: var(--muted); min-width: 0; }
+  .st > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+  .dot.on { background: var(--green); }
+  .dot.warn { background: var(--amber); }
+  /* 保存时间与删除共用一个位置：悬停时时间让位给删除 */
+  .slot { flex: none; display: grid; justify-items: end; }
+  .slot > * { grid-area: 1 / 1; align-self: center; }
+  .slot .meta { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .slot .del { visibility: hidden; }
+  .row:hover .slot .del:not(:disabled), .slot .del:focus-visible { visibility: visible; }
+  .row:hover .slot .del:not(:disabled) ~ .meta, .slot .del:focus-visible ~ .meta { visibility: hidden; }
+  @media (max-width: 680px) { .slot .meta { display: none; } }
+  /* magpie 的 .field：灰底药丸，一列对齐 */
+  .field { display: inline-flex; align-items: center; gap: 5px; flex: none; height: 25px; width: 180px; padding: 0 8px; border-radius: 6px; background: var(--pill); font-size: 12.5px; color: var(--fg); transition: background .12s, box-shadow .12s; }
+  .field .v { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .field .k { color: var(--faint); font-size: 11.5px; flex: none; }
+  .field.gcp .k { color: var(--accent); }
+  .row .field + .sw { margin-left: -2px; }
+  .row.kv .k2 { flex: none; width: 92px; color: var(--muted); }
+  .row.kv dd { flex: 1; min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+  .row.kv dd.mono { font-family: var(--code); font-size: 11.5px; }
+  .row.pref .sub { white-space: normal; }
+  .empty-state { padding: 36px 20px; text-align: center; color: var(--muted); }
+  .empty-state b { display: block; color: var(--fg); font-weight: 500; margin-bottom: 4px; }
+
+  /* magpie 的 lib-switch */
+  .sw { flex: none; position: relative; width: 32px; height: 19px; border-radius: 10px; background: var(--line); transition: background .2s var(--ease); cursor: pointer; appearance: none; -webkit-appearance: none; border: 0; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transition: transform .22s var(--ease); }
+  .sw.on, .sw:checked { background: var(--mark); }
+  .sw.on::after, .sw:checked::after { transform: translateX(13px); background: var(--knob-on); }
+  .sw:disabled { opacity: .5; cursor: default; }
+  .sw.on:disabled { opacity: 1; }
+
+  /* magpie 的文字按钮 */
+  .text { font-size: 12px; color: var(--ctl-fg); padding: 3px 7px; border-radius: 6px; transition: background .12s, color .12s, transform .14s var(--ease); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; flex: none; }
+  .text:hover:not(:disabled) { color: var(--fg); background: var(--pill); }
+  .text.danger:hover:not(:disabled) { color: var(--red); background: var(--red-soft); }
+  .text:disabled { opacity: .5; }
+
+  /* ---- 底部档案行：magpie 的 .profiles / .chip / .chip-input ---- */
+  .profiles { display: flex; align-items: center; gap: 10px; padding: 10px 4px 2px; min-height: 36px; flex: none; }
+  .profiles .label { flex: none; font-size: 11px; font-weight: 600; letter-spacing: .05em; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; flex: 1 1 0; min-width: 0; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; max-width: 100%; padding: 0 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); font-size: 13px; min-width: 0; }
+  .chip > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .chip .lib { width: 5px; height: 5px; border-radius: 50%; background: var(--amber); flex: none; }
+  .chip-input { height: 25px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--accent); background: var(--card); outline: none; width: 140px; font-size: 12px; flex: none; }
+  .chip-input:focus-visible { outline: none; }
+  .chip-input::placeholder { color: var(--faint); }
+
+  /* ---- 底部状态浮签：magpie 窗口的 .foot .status ---- */
+  .status-line { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: calc(100vw - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; line-height: 16px; font-weight: 500; padding: 3px 10px; border-radius: 11px; color: var(--muted); background: color-mix(in srgb, currentColor 16%, var(--card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 30%, transparent), 0 6px 20px rgba(0, 0, 0, .28); pointer-events: none; animation: fade-in .2s var(--ease); z-index: 30; }
+  .status-line.ok { color: var(--green); }
+  .status-line.err { color: var(--red); pointer-events: auto; user-select: text; cursor: text; white-space: normal; }
+  @keyframes fade-in { from { opacity: 0; } }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--faint); border: 3px solid transparent; border-radius: 10px; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--muted); }
+  ::-webkit-scrollbar-button, ::-webkit-scrollbar-corner { display: none; background: transparent; }
+  @media (prefers-reduced-motion: reduce) { .view { animation: none; } .seg > .thumb { transition: none; } }
+</style>
+</head>
+<body>
+<header class="top" data-tauri-drag-region>
+  <div class="brand" data-tauri-drag-region>
+    <span class="logo" aria-hidden="true" data-tauri-drag-region><svg viewBox="0 0 20 20" width="18" height="18" data-tauri-drag-region><path d="M10 2.2 17.6 17.5H13.9L10 9.3 6.1 17.5H2.4Z" fill="currentColor"/></svg></span>
+    <span data-tauri-drag-region>AGY Switch</span>
+  </div>
+  <nav class="seg" id="nav" aria-label="页面">
+    <span class="thumb" id="thumb"></span>
+    <button data-view="accounts" class="on" aria-current="page">账号</button>
+    <button data-view="current">当前登录</button>
+  </nav>
+  <div class="actions">
+    <span class="app-state" id="running" title="Antigravity 进程状态"><i></i><span>检测中</span></span>
+    <button class="icon" id="refresh" title="刷新">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3h-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="icon" id="prefs" title="设置" data-view="settings">
+      <svg viewBox="0 0 24 24" width="14" height="14"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></g></svg>
+    </button>
+  </div>
+</header>
+<div class="wincap" id="wincap">
+  <button type="button" data-cap="min" title="最小化" tabindex="-1">&#xE921;</button>
+  <button type="button" data-cap="max" title="最大化" tabindex="-1">&#xE922;</button>
+  <button type="button" data-cap="close" title="关闭" tabindex="-1">&#xE8BB;</button>
+</div>
+
+<main class="view" id="view-accounts">
+  <div class="pv-head">
+    <p class="lede" id="lede">点开关切换账号，会关闭并重启 Antigravity；<b>登录新账号</b> 只清本机凭据，不会在 Antigravity 中退出登录。</p>
+    <button class="text rt-mask" data-mask aria-pressed="false"><svg viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>隐藏账号</span></button>
+  </div>
+  <div class="list" id="list"><div class="empty-state">正在读取档案…</div></div>
+  <section class="profiles">
+    <span class="label">当前</span>
+    <div class="chips" id="curChip"></div>
+    <input class="chip-input" id="name" placeholder="档案名，回车保存" maxlength="50" aria-label="档案名" hidden />
+    <button class="text" id="loginNew" title="只清除本机凭据并重启 Antigravity，不会退出登录">
+      <svg viewBox="0 0 16 16" width="11" height="11"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>登录新账号
+    </button>
+    <button class="text" id="save" disabled>
+      <svg viewBox="0 0 16 16" width="11" height="11"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span id="saveLabel">保存当前</span>
+    </button>
+  </section>
+</main>
+
+<main class="view" id="view-current" hidden>
+  <div class="pv-head">
+    <p class="lede">Antigravity 本机凭据 <b>gemini:antigravity</b> 中的当前登录。「当前」按本地凭据匹配，不代表服务器已验证会话。</p>
+    <button class="text rt-mask" data-mask aria-pressed="false"><svg viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>隐藏账号</span></button>
+  </div>
+  <div class="list" id="current"><div class="empty-state">正在读取登录凭据…</div></div>
+</main>
+
+<main class="view" id="view-settings" hidden>
+  <p class="lede">档案以 Windows DPAPI 加密存放在 <b>%LOCALAPPDATA%\agy-switch\profiles</b>。</p>
+  <div class="list">
+    <label class="row pref">
+      <div class="who">
+        <div class="name">切换时自动关闭并重启 Antigravity</div>
+        <div class="sub">强烈建议开启，避免旧进程把刷新后的 token 回写覆盖。关闭后需先手动退出 Antigravity 才能切换</div>
+      </div>
+      <input type="checkbox" class="sw" id="restart" checked />
+    </label>
+    <label class="row pref">
+      <div class="who">
+        <div class="name">保存时包含 ADC 文件</div>
+        <div class="sub">application_default_credentials.json，仅 ADC 模式需要</div>
+      </div>
+      <input type="checkbox" class="sw" id="adc" />
+    </label>
+  </div>
+</main>
+
+<div class="status-line" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+const T = window.__TAURI__;
+const invoke = T.core.invoke;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let toastTimer, busy = false, refreshing = false, again = false, refreshGen = 0, hasLogin = false, naming = false;
+
+// 窗口按钮
+const win = () => T.window.getCurrentWindow();
+$('wincap').onclick = (ev) => {
+  const cap = ev.target.closest('button')?.dataset.cap;
+  if (cap === 'min') win().minimize();
+  else if (cap === 'max') win().toggleMaximize();
+  else if (cap === 'close') win().close();
+};
+
+// 设置项记住上次选择
+for (const id of ['restart', 'adc']) {
+  try { const v = localStorage.getItem('agy-' + id); if (v !== null) $(id).checked = v === '1'; } catch {}
+  $(id).addEventListener('change', () => { try { localStorage.setItem('agy-' + id, $(id).checked ? '1' : '0'); } catch {} updateLede(); });
+}
+function updateLede() {
+  $('lede').innerHTML = ($('restart').checked
+    ? '点开关切换账号，会关闭并重启 Antigravity；'
+    : '点开关切换账号（自动重启已关闭，需先手动退出 Antigravity）；')
+    + '<b>登录新账号</b> 只清本机凭据，不会在 Antigravity 中退出登录。';
+}
+updateLede();
+
+function setBusy(value) {
+  busy = value;
+  document.querySelectorAll('main button, main input, #refresh').forEach(el => el.disabled = value);
+  $('save').disabled = value || !hasLogin;
+}
+function toast(msg, kind) {
+  const t = $('toast'); t.textContent = msg; t.title = msg; t.className = 'status-line ' + (kind || ''); t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), kind === 'err' ? 8000 : 4000);
+}
+const fmtTime = (s) => (s ? new Date(s * 1000).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-');
+const isGcp = (s) => s.auth_method === 'gcp';
+// GCP 项目 ID 也算账号信息：隐藏账号时和邮箱一样打码
+function planParts(s) {
+  return (isGcp(s) ? [['p', s.project_id], ['', s.region], ['', s.tier_display_name]] : [['', s.tier_display_name || s.user_tier]]).filter(([, v]) => v);
+}
+function field(s, key) {
+  const parts = planParts(s);
+  const html = parts.map(([k, v]) => (k ? pii(v, key) : esc(v))).join(' · ') || (isGcp(s) ? '项目' : '账号');
+  const title = parts.map(([k, v]) => (k ? tip(v, key) : esc(v))).join(' · ');
+  return `<span class="field ${isGcp(s) ? 'gcp' : ''}" title="${title}"><span class="k">${isGcp(s) ? 'GCP' : '个人'}</span><span class="v">${html}</span></span>`;
+}
+function icon(email, key) {
+  if (!email) return '<span class="ic none">?</span>';
+  let h = 0; for (const c of email.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return `<span class="ic" style="--av:var(--c${(h % 7) + 1})">${hid(key) ? '' : esc(email[0].toUpperCase())}</span>`;
+}
+
+// 分段导航 + 设置图标；滑块照 magpie 平移过去
+function thumbTo(btn, animate) {
+  const th = $('thumb');
+  if (!btn) { th.style.opacity = '0'; return; }
+  const to = { transform: `translateX(${btn.offsetLeft}px)`, width: btn.offsetWidth + 'px' };
+  const from = { transform: th.style.transform, width: th.style.width };
+  const shown = th.style.opacity !== '0' && from.width;
+  Object.assign(th.style, to, { opacity: '1' });
+  if (animate && shown && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+    th.animate([from, to], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
+}
+function show(view) {
+  const navBtn = document.querySelector(`#nav button[data-view="${view}"]`);
+  document.querySelectorAll('#nav button').forEach(x => { x.classList.toggle('on', x === navBtn); x.toggleAttribute('aria-current', x === navBtn); });
+  $('prefs').classList.toggle('on', view === 'settings');
+  thumbTo(navBtn, true);
+  document.querySelectorAll('main.view').forEach(v => (v.hidden = v.id !== 'view-' + view));
+}
+$('nav').onclick = (ev) => { const b = ev.target.closest('button[data-view]'); if (b) show(b.dataset.view); };
+$('prefs').onclick = () => show($('prefs').classList.contains('on') ? 'accounts' : 'settings');
+document.fonts?.ready.then(() => thumbTo(document.querySelector('#nav button.on'), false));
+thumbTo(document.querySelector('#nav button.on'), false);
+
+function setNaming(on) {
+  naming = on;
+  $('name').hidden = !on;
+  $('saveLabel').textContent = on ? '保存' : '保存当前';
+  if (on) { $('name').value = ''; $('name').focus(); }
+  else if (document.activeElement === document.body && !$('save').disabled) $('save').focus();
+}
+
+// ---- 隐藏账号（magpie 的 Hide accounts）：邮箱与档案名换成同形字母并模糊，便于截图分享；每行的眼睛单独显示这一个 ----
+const EYE = 'M1.75 8S4.25 3.5 8 3.5 14.25 8 14.25 8 11.75 12.5 8 12.5 1.75 8 1.75 8ZM8 9.75a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Z';
+const EYE_OFF = 'M6.6 3.7A6.9 6.9 0 0 1 8 3.5c3.75 0 6.25 4.5 6.25 4.5a11 11 0 0 1-1.5 2M4.4 4.4C2.7 5.55 1.75 8 1.75 8S4.25 12.5 8 12.5c1.2 0 2.25-.45 3.1-1.05M6.75 6.75a1.75 1.75 0 0 0 2.5 2.5M2 2l12 12';
+let masked = false, lastSt = null;
+const shownAcc = new Set();
+try { masked = localStorage.getItem('agy-mask') === '1'; } catch {}
+const akey = (email, name) => String(email || name || '').toLowerCase();
+const hid = (key) => masked && !shownAcc.has(key);
+const dots = (s) => { let h = 7; return String(s).replace(/[^@.\s·]/gu, (c) => (h = (h * 31 + c.codePointAt(0)) >>> 0, 'aeiounrstlcmdh'[h % 14])); };
+const pii = (s, key) => (s ? (hid(key) ? `<span class="pii">${esc(dots(s))}</span>` : esc(s)) : '');
+const tip = (s, key) => esc(hid(key) ? String(s ?? '').replace(/[^@.\s]/gu, '•') : s);
+function eye(key) {
+  if (!masked) return '';
+  const on = shownAcc.has(key);
+  return `<button class="acct-eye" data-eye="${esc(key)}" aria-pressed="${on}" title="${on ? '隐藏这个账号' : '显示这个账号'}" aria-label="${on ? '隐藏这个账号' : '显示这个账号'}"><svg viewBox="0 0 16 16" width="13" height="13"><path d="${on ? EYE : EYE_OFF}" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+}
+function paintMask() {
+  document.body.classList.toggle('masked', masked);
+  document.querySelectorAll('[data-mask]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(masked));
+    b.querySelector('path').setAttribute('d', masked ? EYE_OFF : EYE);
+    b.lastElementChild.textContent = masked ? '已隐藏账号' : '隐藏账号';
+    b.title = masked ? '账号已隐藏，便于截图分享。点击显示' : '模糊所有页面的邮箱和档案名，便于截图分享';
+  });
+}
+function setMasked(on) {
+  masked = on; shownAcc.clear();
+  try { localStorage.setItem('agy-mask', on ? '1' : '0'); } catch {}
+  paintMask();
+  document.body.classList.add('masking'); clearTimeout(setMasked.t);
+  setMasked.t = setTimeout(() => document.body.classList.remove('masking'), 450);
+  if (lastSt) render(lastSt);
+}
+document.querySelectorAll('[data-mask]').forEach((b) => (b.onclick = () => setMasked(!masked)));
+paintMask();
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('.acct-eye');
+  if (!b) return;
+  ev.stopPropagation();
+  const k = b.dataset.eye;
+  shownAcc.has(k) ? shownAcc.delete(k) : shownAcc.add(k);
+  if (lastSt) render(lastSt);
+}, true);
+
+function render(st) {
+  lastSt = st;
+  const r = $('running');
+  r.className = 'app-state' + (st.app_running ? ' on' : '');
+  r.lastElementChild.textContent = st.process_error ? '状态未知' : (st.app_running ? '运行中' : '未运行');
+  r.title = st.process_error || (st.app_running ? 'Antigravity 运行中' : 'Antigravity 未运行');
+  const c = st.current;
+  hasLogin = Boolean(c);
+  $('save').disabled = busy || !hasLogin;
+  if (!hasLogin && naming) setNaming(false);
+  const ck = c && akey(c.email, st.active);
+
+  $('curChip').innerHTML = c
+    ? `<span class="chip ${st.active ? 'on' : ''}" title="${tip(c.email, ck)}${st.active ? '' : '（尚未保存）'}"><span>${pii(st.active || c.email, ck) || '(未知账号)'}</span>${st.active ? '' : '<span class="lib"></span>'}</span>`
+    : '<span class="chip" title="Antigravity 中没有登录"><span>未登录</span></span>';
+
+  $('current').innerHTML = st.current_error
+    ? `<div class="empty-state"><b>登录状态读取失败</b>${esc(st.current_error)}</div>`
+    : c
+    ? `<div class="row acct">
+        ${icon(c.email, ck)}
+        <div class="who">
+          <div class="name-line"><div class="name" title="${tip(c.email, ck)}">${pii(c.email, ck) || '(未知账号)'}</div>${eye(ck)}</div>
+          <div class="st"><i class="dot ${st.active ? 'on' : 'warn'}"></i><span>${st.active ? '已保存为「' + pii(st.active, ck) + '」' : '尚未保存为档案'}</span></div>
+        </div>
+        ${field(c, ck)}
+      </div>
+      <div class="row kv"><span class="k2">项目</span><dd title="${tip(c.project_id, ck)}">${pii(c.project_id, ck) || '-'}</dd></div>
+      <div class="row kv"><span class="k2">区域</span><dd>${esc(c.region) || '-'}</dd></div>
+      <div class="row kv"><span class="k2">套餐</span><dd>${esc(c.tier_display_name || c.user_tier) || '-'}</dd></div>
+      <div class="row kv"><span class="k2">Token 过期</span><dd>${c.expiry ? esc(new Date(c.expiry).toLocaleString()) : '-'}</dd></div>
+      <div class="row kv"><span class="k2">凭据位置</span><dd class="mono">gemini:antigravity</dd></div>`
+    : '<div class="empty-state"><b>未检测到本地登录</b>请先在 Antigravity 中完成登录，再点右上角刷新。</div>';
+
+  $('list').innerHTML = st.profiles.length
+    ? st.profiles.map((p) => {
+      const n = esc(p.name), k = akey(p.summary.email, p.name);
+      const status = `${p.active ? '当前登录' : '已保存'} · ${pii(p.summary.email, k) || '(未知)'}${p.has_adc ? ' · ADC' : ''}`;
+      const shown = hid(k) ? '这个档案' : '「' + n + '」';
+      return `
+      <div class="row acct">
+        ${icon(p.summary.email, k)}
+        <div class="who">
+          <div class="name-line"><div class="name" title="${tip(p.name, k)}">${pii(p.name, k)}</div>${eye(k)}</div>
+          <div class="st"><i class="dot ${p.active ? 'on' : ''}"></i><span title="${tip(p.summary.email, k)}">${status}</span></div>
+        </div>
+        <span class="slot">
+          <button class="text danger del" data-del="${n}" aria-label="删除${shown}">删除</button>
+          <span class="meta" title="保存于 ${esc(new Date(p.saved_at * 1000).toLocaleString())}">${fmtTime(p.saved_at)}</span>
+        </span>
+        ${field(p.summary, k)}
+        <button class="sw ${p.active ? 'on' : ''}" role="switch" aria-checked="${p.active}" data-sw="${n}" aria-label="${p.active ? '当前账号' : '切换到'}${shown}" title="${p.active ? '当前账号' : '切换到此账号'}" ${p.active || busy ? 'disabled' : ''}></button>
+      </div>`; }).join('')
+    : `<div class="empty-state"><b>还没有档案</b>${hasLogin ? '点下方「保存当前」把这个登录存成档案。' : '先在 Antigravity 中登录，再回来点「保存当前」。'}</div>`;
+  const warnings = [st.current_error, st.process_error, ...(st.profile_errors || [])].filter(Boolean);
+  if (warnings.length) toast(warnings.join('；'), 'err');
+}
+
+async function refresh() {
+  if (busy) return;
+  if (refreshing) { again = true; return; }
+  refreshing = true;
+  const gen = ++refreshGen;
+  try {
+    const st = await invoke('get_state');
+    if (!busy && gen === refreshGen) render(st);
+  } catch (e) {
+    if (!busy && gen === refreshGen) {
+      hasLogin = false; $('save').disabled = true;
+      $('current').innerHTML = `<div class="empty-state"><b>登录状态读取失败</b>${esc(String(e))}</div>`;
+      $('running').className = 'app-state';
+      $('running').lastElementChild.textContent = '状态未知';
+      $('curChip').innerHTML = '<span class="chip"><span>状态未知</span></span>';
+      if (!lastSt) $('list').innerHTML = '<div class="empty-state"><b>暂时无法读取档案</b>请点右上角刷新重试。</div>';
+      toast(String(e), 'err');
+    }
+  } finally {
+    refreshing = false;
+    if (again) { again = false; refresh(); }
+  }
+}
+// 用户操作结束后：作废进行中的旧结果，再强制取一次最新状态
+async function settle() { setBusy(false); refreshGen++; again = false; refreshing = false; await refresh(); }
+
+async function saveAs(name) {
+  setBusy(true);
+  try {
+    await invoke('save_profile', { name, includeAdc: $('adc').checked });
+    setNaming(false); toast(masked ? '已保存档案' : `已保存档案「${name}」`, 'ok');
+  } catch (e) { toast(String(e), 'err'); }
+  await settle();
+  if (naming) $('name').focus();
+}
+
+// 和 magpie 一样：名称框打开时，按下按钮不让输入框失焦，点击即保存
+$('save').onmousedown = (e) => { if (naming) e.preventDefault(); };
+$('save').onclick = () => {
+  if (busy) return;
+  if (!naming) return setNaming(true);
+  const n = $('name').value.trim();
+  n ? saveAs(n) : $('name').focus();
+};
+$('name').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') setNaming(false);
+  if (e.key === 'Enter' && !busy) { const n = $('name').value.trim(); if (n) saveAs(n); }
+});
+$('name').addEventListener('blur', () => { if (!busy && !$('name').value.trim()) setNaming(false); });
+
+$('list').onclick = async (ev) => {
+  if (busy) return;
+  const btn = ev.target.closest('button');
+  if (!btn || btn.disabled) return;
+  const sw = btn.dataset.sw, del = btn.dataset.del;
+  if (sw) {
+    if (btn.getAttribute('aria-checked') === 'true') return;
+    // 会强制结束 Antigravity：开着的时候先问一句
+    if ($('restart').checked && (lastSt?.app_running || lastSt?.process_error)
+      && !confirm(`切换${masked ? '账号' : `到「${sw}」`}会强制关闭 Antigravity 再重新打开，正在运行的 Agent 任务和终端会被中断。\n\n继续？`)) return;
+    btn.classList.add('on');
+    setBusy(true); toast($('restart').checked ? '正在切换，Antigravity 将关闭并重新启动…' : '正在切换…');
+    try {
+      await invoke('switch_profile', { name: sw, restart: $('restart').checked });
+      toast(masked ? '已切换账号' : `已切换到「${sw}」`, 'ok');
+    } catch (e) { toast(String(e), 'err'); }
+    await settle();
+  } else if (del) {
+    if (!confirm(`删除档案「${del}」？此操作不可恢复。`)) return;
+    setBusy(true);
+    try { await invoke('delete_profile', { name: del }); toast('已删除', 'ok'); } catch (e) { toast(String(e), 'err'); }
+    await settle();
+  }
+};
+
+$('loginNew').onclick = async () => {
+  if (busy) return;
+  if (!confirm('将关闭 Antigravity，把当前账号的最新凭据存回档案，然后清除本机登录凭据并重启 Antigravity，供你登录新账号。\n\n不会在 Antigravity 中退出登录，已保存的档案仍可切回。继续？')) return;
+  setBusy(true); toast('正在关闭 Antigravity 并清除本机凭据…');
+  try {
+    await invoke('login_new');
+    toast('Antigravity 已重启，登录新账号后回来点「保存当前」', 'ok');
+  } catch (e) { toast(String(e), 'err'); }
+  await settle();
+};
+
+$('refresh').onclick = () => {
+  const b = $('refresh'); b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin');
+  refresh();
+};
+window.addEventListener('focus', refresh);
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

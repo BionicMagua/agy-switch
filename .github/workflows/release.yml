@@ -1,0 +1,87 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTUP_TOOLCHAIN: '1.93.1'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Check release version
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $manifest = Get-Content src-tauri/Cargo.toml -Raw
+          if ($manifest -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw 'Cargo version missing' }
+          if ($Matches[1] -ne $version) { throw 'Cargo and Tauri versions differ' }
+          if ($env:GITHUB_REF_NAME -cne "v$version") { throw 'Tag must match the application version' }
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Install Rust
+        run: rustup toolchain install 1.93.1 --profile minimal --component rustfmt
+
+      - name: Restore build cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+            src-tauri/target-dist
+          key: windows-2025-rust-1.93.1-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Test account handling and process detection
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Test interface error handling
+        run: node scripts/test-ui.mjs
+
+      - name: Build portable Windows package
+        run: ./scripts/package.ps1
+
+      - name: Prepare release assets
+        run: |
+          $stem = "AGY-Switch-$env:RELEASE_VERSION-win-x64"
+          $zip = Join-Path $PWD "dist/$stem.zip"
+          if (-not (Test-Path -LiteralPath $zip)) { throw 'Release ZIP is missing' }
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $stem.zip" | Set-Content -LiteralPath dist/SHA256SUMS.txt -Encoding ascii
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $zip = "dist/AGY-Switch-$env:RELEASE_VERSION-win-x64.zip"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $zip dist/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --clobber
+          } else {
+            gh release create $tag $zip dist/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --verify-tag --title "AGY Switch $tag" --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
